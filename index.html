@@ -25,11 +25,25 @@
       margin: 0;
       min-height: 100vh;
       font-family: Inter, Arial, sans-serif;
-      background: radial-gradient(circle at top, rgba(124, 58, 237, 0.18), transparent 24%),
-                  radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.12), transparent 30%),
-                  linear-gradient(180deg, #07101d 0%, #0b1222 40%, #0f172a 100%);
+      background: radial-gradient(circle at top left, rgba(124, 58, 237, 0.22), transparent 22%),
+                  radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.16), transparent 28%),
+                  linear-gradient(180deg, #060913 0%, #07101d 28%, #081421 52%, #0c1626 100%);
+      background-attachment: fixed;
       color: var(--text);
       padding: 24px;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(circle at 15% 18%, rgba(124, 58, 237, 0.12), transparent 7%),
+        radial-gradient(circle at 82% 22%, rgba(56, 189, 248, 0.1), transparent 8%),
+        linear-gradient(180deg, rgba(255,255,255,0.02), transparent 32%);
+      pointer-events: none;
     }
 
     header {
@@ -50,6 +64,37 @@
       color: var(--muted);
       font-size: 1.02rem;
       line-height: 1.75;
+    }
+
+    .pause-button {
+      margin: 22px auto 0;
+      display: inline-flex;
+      background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+      border: none;
+      color: white;
+      padding: 14px 22px;
+      border-radius: 999px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.2s ease, opacity 0.2s ease;
+    }
+
+    .pause-button:hover {
+      transform: translateY(-2px);
+    }
+
+    .paused-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(255,255,255,0.96);
+      font-size: 2.1rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      pointer-events: none;
+      text-shadow: 0 0 18px rgba(124,58,237,0.7);
     }
 
     .app {
@@ -231,15 +276,14 @@
   <header>
     <h1>WIESSP Zombie Outbreak</h1>
     <p>First-person shooter prototype with a starter katana, six unlockable guns, armor upgrades, money from kills, and four buyable maps. Every katana kill splashes purple ooze.</p>
-  </header>
-
-  <div class="app">
+    <button id="pauseBtn" class="pause-button">Pause</button>
     <section class="panel">
       <div class="status-grid">
         <div class="status-card"><span>Money</span><strong id="money">$0</strong></div>
         <div class="status-card"><span>Health</span><strong id="health">100</strong></div>
         <div class="status-card"><span>Armor</span><strong id="armor">None</strong></div>
         <div class="status-card"><span>Weapon</span><strong id="weapon">Katana</strong></div>
+        <div class="status-card"><span>Hits to kill</span><strong id="hitCount">2</strong></div>
       </div>
 
       <div class="canvas-wrap">
@@ -268,7 +312,7 @@
 
       <div>
         <h2 class="section-title">Game Notes</h2>
-        <p class="note">Kill zombies to earn cash, buy better guns and armor, then unlock new maps. The starting katana is deadly up close and adds purple ooze flair on every kill.</p>
+        <p class="note">Kill zombies to earn cash, buy better guns and armor, then unlock new maps. The starting katana takes about 2 hits to kill a zombie and splashes purple ooze on every close hit.</p>
       </div>
     </section>
   </div>
@@ -314,7 +358,10 @@
       nextSpawn: 0,
       lastAttack: 0,
       wave: 1,
-      lastTime: 0
+      lastTime: 0,
+      floorOffset: 0,
+      paused: false,
+      infiniteLives: true
     };
 
     const canvas = document.getElementById('gameCanvas');
@@ -323,6 +370,8 @@
     const healthEl = document.getElementById('health');
     const armorEl = document.getElementById('armor');
     const weaponEl = document.getElementById('weapon');
+    const hitCountEl = document.getElementById('hitCount');
+    const pauseBtn = document.getElementById('pauseBtn');
     const weaponShop = document.getElementById('weaponShop');
     const armorShop = document.getElementById('armorShop');
     const mapShop = document.getElementById('mapShop');
@@ -330,6 +379,7 @@
     const HEIGHT = canvas.height;
     const CENTER_X = WIDTH / 2;
     const CENTER_Y = HEIGHT / 2;
+    const ZOMBIE_BASE_HP = 80;
 
     function clamp(value, min, max) {
       return Math.min(Math.max(value, min), max);
@@ -340,6 +390,9 @@
       healthEl.textContent = `${Math.max(0, Math.round(state.health))}`;
       armorEl.textContent = armors[state.armor].name;
       weaponEl.textContent = weapons[state.weapon].name;
+      const hits = Math.ceil((ZOMBIE_BASE_HP + 8) / weapons[state.weapon].damage);
+      hitCountEl.textContent = hits;
+      pauseBtn.textContent = state.paused ? 'Resume' : 'Pause';
     }
 
     function buildShop() {
@@ -437,7 +490,7 @@
       else if (edge < 0.5) { x = Math.random() * WIDTH; y = HEIGHT + 40; }
       else if (edge < 0.75) { x = -40; y = Math.random() * HEIGHT; }
       else { x = WIDTH + 40; y = Math.random() * HEIGHT; }
-      state.zombies.push({ x, y, hp: 68 + Math.random() * 38, speed: map.speed * (0.9 + Math.random() * 0.28), alive: true, deadTime: 0 });
+      state.zombies.push({ x, y, hp: ZOMBIE_BASE_HP + Math.random() * 8, speed: map.speed * (0.72 + Math.random() * 0.16), alive: true, deadTime: 0 });
     }
 
     function addMoney(amount) {
@@ -469,6 +522,7 @@
     }
 
     function attack() {
+      if (state.paused) return;
       const weapon = weapons[state.weapon];
       const now = performance.now();
       if (now - state.lastAttack < weapon.fireRate * 1000) return;
@@ -496,8 +550,9 @@
       const map = maps[state.map];
       if (state.keys.ArrowLeft) state.player.angle -= dt * 0.0028;
       if (state.keys.ArrowRight) state.player.angle += dt * 0.0028;
-      if (state.keys.w) { state.player.x += Math.cos(state.player.angle) * 180 * dt / 1000; state.player.y += Math.sin(state.player.angle) * 180 * dt / 1000; }
-      if (state.keys.s) { state.player.x -= Math.cos(state.player.angle) * 140 * dt / 1000; state.player.y -= Math.sin(state.player.angle) * 140 * dt / 1000; }
+      const moveSpeed = 180 * dt / 1000;
+      if (state.keys.w) { state.player.x += Math.cos(state.player.angle) * moveSpeed; state.player.y += Math.sin(state.player.angle) * moveSpeed; state.floorOffset += 5 * dt / 16; }
+      if (state.keys.s) { state.player.x -= Math.cos(state.player.angle) * 140 * dt / 1000; state.player.y -= Math.sin(state.player.angle) * 140 * dt / 1000; state.floorOffset -= 4 * dt / 16; }
       if (state.keys.a) { state.player.x += Math.cos(state.player.angle - Math.PI / 2) * 160 * dt / 1000; state.player.y += Math.sin(state.player.angle - Math.PI / 2) * 160 * dt / 1000; }
       if (state.keys.d) { state.player.x += Math.cos(state.player.angle + Math.PI / 2) * 160 * dt / 1000; state.player.y += Math.sin(state.player.angle + Math.PI / 2) * 160 * dt / 1000; }
       state.player.x = clamp(state.player.x, 60, WIDTH - 60);
@@ -511,9 +566,9 @@
         const dy = state.player.y - z.y;
         const distance = Math.hypot(dx, dy);
         const angle = Math.atan2(dy, dx);
-        z.x += Math.cos(angle) * z.speed * dt / 14;
-        z.y += Math.sin(angle) * z.speed * dt / 14;
-        if (distance < 34) {
+        z.x += Math.cos(angle) * z.speed * dt / 22;
+        z.y += Math.sin(angle) * z.speed * dt / 22;
+        if (distance < 34 && !state.infiniteLives) {
           const protection = armors[state.armor].protection;
           state.health -= (5 * (1 - protection)) * dt / 120;
         }
@@ -538,6 +593,10 @@
         });
       });
 
+      if (!state.infiniteLives && state.health < 100) {
+        state.health = clamp(state.health + 0.005 * dt, 0, 100);
+      }
+
       if (performance.now() > state.nextSpawn) {
         spawnZombie();
         state.nextSpawn = performance.now() + (1200 / map.spawn);
@@ -557,30 +616,365 @@
       updateUI();
     }
 
-    function draw() {
-      ctx.clearRect(0, 0, WIDTH, HEIGHT);
-      const sky = ctx.createLinearGradient(0, 0, 0, CENTER_Y);
-      sky.addColorStop(0, '#13192f');
-      sky.addColorStop(1, '#0b1222');
-      ctx.fillStyle = sky;
-      ctx.fillRect(0, 0, WIDTH, CENTER_Y);
-      const ground = ctx.createLinearGradient(0, CENTER_Y, 0, HEIGHT);
-      ground.addColorStop(0, '#0f172a');
-      ground.addColorStop(1, '#07101d');
-      ctx.fillStyle = ground;
-      ctx.fillRect(0, CENTER_Y, WIDTH, CENTER_Y);
+    function drawDecor(map) {
+      ctx.save();
+      const leftWall = ctx.createLinearGradient(0, 0, CENTER_X - 40, 0);
+      leftWall.addColorStop(0, '#111b26');
+      leftWall.addColorStop(1, '#0b111a');
+      ctx.fillStyle = leftWall;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(CENTER_X - 180, CENTER_Y + 18);
+      ctx.lineTo(CENTER_X - 180, HEIGHT);
+      ctx.lineTo(0, HEIGHT);
+      ctx.closePath();
+      ctx.fill();
 
-      ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+      const rightWall = ctx.createLinearGradient(WIDTH, 0, CENTER_X + 40, 0);
+      rightWall.addColorStop(0, '#121f31');
+      rightWall.addColorStop(1, '#0b111a');
+      ctx.fillStyle = rightWall;
+      ctx.beginPath();
+      ctx.moveTo(WIDTH, 0);
+      ctx.lineTo(CENTER_X + 180, CENTER_Y + 18);
+      ctx.lineTo(CENTER_X + 180, HEIGHT);
+      ctx.lineTo(WIDTH, HEIGHT);
+      ctx.closePath();
+      ctx.fill();
+
+      const floor = ctx.createLinearGradient(0, CENTER_Y + 10, 0, HEIGHT);
+      floor.addColorStop(0, '#091016');
+      floor.addColorStop(1, '#05080d');
+      ctx.fillStyle = floor;
+      ctx.fillRect(0, CENTER_Y, WIDTH, HEIGHT - CENTER_Y);
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
       ctx.lineWidth = 1;
-      for (let i = 1; i < 17; i++) {
+      for (let i = 0; i < 14; i++) {
+        const y = CENTER_Y + i * 22;
         ctx.beginPath();
-        ctx.moveTo(0, CENTER_Y + i * 20);
-        ctx.lineTo(WIDTH, CENTER_Y + i * 20);
+        ctx.moveTo(0, y);
+        ctx.lineTo(WIDTH, y);
         ctx.stroke();
       }
 
-      ctx.fillStyle = maps[state.map].color;
-      ctx.fillRect(0, CENTER_Y, WIDTH, 16);
+      ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+      for (let i = 0; i < 12; i++) {
+        const x = 40 + i * ((WIDTH - 80) / 12);
+        ctx.beginPath();
+        ctx.moveTo(x, CENTER_Y + 14);
+        ctx.lineTo(CENTER_X + (x - CENTER_X) * 0.24, HEIGHT);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(CENTER_X - 240, CENTER_Y + 10);
+      ctx.lineTo(CENTER_X, CENTER_Y - 36);
+      ctx.lineTo(CENTER_X + 240, CENTER_Y + 10);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(255,255,255,0.07)';
+      ctx.fillRect(CENTER_X - 18, CENTER_Y - 40, 36, 36);
+
+      const lightGlow = ctx.createRadialGradient(CENTER_X, CENTER_Y - 24, 40, CENTER_X, CENTER_Y - 24, 120);
+      lightGlow.addColorStop(0, 'rgba(143, 102, 255, 0.30)');
+      lightGlow.addColorStop(1, 'rgba(143, 102, 255, 0)');
+      ctx.fillStyle = lightGlow;
+      ctx.fillRect(0, CENTER_Y - 120, WIDTH, 240);
+
+      const detailColor = map.name === 'Neon Lab' ? 'rgba(79, 70, 229, 0.12)' : 'rgba(255,255,255,0.06)';
+      if (map.name === 'Graveyard') {
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 5; i++) {
+          const gx = 100 + i * 180;
+          ctx.beginPath();
+          ctx.moveTo(gx, HEIGHT - 90);
+          ctx.lineTo(gx + 12, HEIGHT - 130);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(gx + 6, HEIGHT - 110, 14, Math.PI, 0);
+          ctx.stroke();
+        }
+      } else if (map.name === 'Factory') {
+        ctx.fillStyle = 'rgba(147, 197, 253, 0.14)';
+        for (let i = 0; i < 4; i++) {
+          const fx = 100 + i * 170;
+          ctx.fillRect(fx, HEIGHT - 88, 26, 76);
+          ctx.fillStyle = 'rgba(255,255,255,0.08)';
+          ctx.fillRect(fx + 6, HEIGHT - 68, 14, 28);
+          ctx.fillStyle = 'rgba(147, 197, 253, 0.14)';
+        }
+      } else if (map.name === 'Neon Lab') {
+        ctx.fillStyle = 'rgba(168, 85, 247, 0.16)';
+        for (let i = 0; i < 5; i++) {
+          const lx = 90 + i * 150;
+          ctx.fillRect(lx, HEIGHT - 88, 20, 72);
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.24)';
+          ctx.fillRect(lx + 6, HEIGHT - 78, 8, 44);
+          ctx.fillStyle = 'rgba(168, 85, 247, 0.16)';
+        }
+      } else if (map.name === 'Ruins') {
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.14)';
+        for (let i = 0; i < 4; i++) {
+          const rx = 110 + i * 180;
+          ctx.fillRect(rx, HEIGHT - 94, 28, 70);
+          ctx.fillStyle = 'rgba(255,255,255,0.06)';
+          ctx.fillRect(rx + 4, HEIGHT - 78, 16, 26);
+          ctx.fillStyle = 'rgba(148, 163, 184, 0.14)';
+        }
+      }
+
+      ctx.restore();
+    }
+
+    function drawZombie(screenX, screenY, size, alpha) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      const torsoWidth = size * 0.68;
+      const torsoHeight = size * 0.74;
+      const headRadius = size * 0.22;
+      const hipWidth = torsoWidth * 0.55;
+      const legHeight = torsoHeight * 0.46;
+      const phase = Math.sin((screenX + screenY) * 0.03 + performance.now() * 0.01);
+      const sway = phase * 3;
+      const step = Math.sin((screenX + screenY) * 0.05 + performance.now() * 0.012) * 5;
+      const torsoY = screenY - torsoHeight * 0.20 + phase * 2;
+      const headY = torsoY - headRadius - 8 + phase * 1.5;
+
+      ctx.fillStyle = '#4f7d45';
+      ctx.beginPath();
+      ctx.ellipse(screenX, torsoY + torsoHeight * 0.34, torsoWidth * 0.85, torsoHeight * 0.60, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#31492d';
+      ctx.fillRect(screenX - hipWidth * 0.28, torsoY + torsoHeight * 0.68, hipWidth * 0.24, legHeight * 0.74);
+      ctx.fillRect(screenX + hipWidth * 0.04, torsoY + torsoHeight * 0.68, hipWidth * 0.24, legHeight * 0.74);
+      ctx.beginPath();
+      ctx.ellipse(screenX - hipWidth * 0.28, torsoY + torsoHeight * 0.98, hipWidth * 0.2, legHeight * 0.22, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(screenX + hipWidth * 0.04, torsoY + torsoHeight * 0.98, hipWidth * 0.2, legHeight * 0.22, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#4b6e37';
+      ctx.beginPath();
+      ctx.moveTo(screenX - torsoWidth * 0.46 + sway, torsoY + torsoHeight * 0.10);
+      ctx.lineTo(screenX - torsoWidth * 0.82 + sway, torsoY + torsoHeight * 0.26);
+      ctx.lineTo(screenX - torsoWidth * 0.80 + sway, torsoY + torsoHeight * 0.50);
+      ctx.lineTo(screenX - torsoWidth * 0.54 + sway, torsoY + torsoHeight * 0.44);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(screenX + torsoWidth * 0.46 + sway, torsoY + torsoHeight * 0.10);
+      ctx.lineTo(screenX + torsoWidth * 0.82 + sway, torsoY + torsoHeight * 0.26);
+      ctx.lineTo(screenX + torsoWidth * 0.80 + sway, torsoY + torsoHeight * 0.50);
+      ctx.lineTo(screenX + torsoWidth * 0.54 + sway, torsoY + torsoHeight * 0.44);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#3f5e33';
+      ctx.beginPath();
+      ctx.moveTo(screenX - torsoWidth * 0.76, torsoY + torsoHeight * 0.38);
+      ctx.lineTo(screenX - torsoWidth * 0.82, torsoY + torsoHeight * 0.56);
+      ctx.lineTo(screenX - torsoWidth * 0.62, torsoY + torsoHeight * 0.58);
+      ctx.lineTo(screenX - torsoWidth * 0.58, torsoY + torsoHeight * 0.42);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(screenX + torsoWidth * 0.76, torsoY + torsoHeight * 0.38);
+      ctx.lineTo(screenX + torsoWidth * 0.82, torsoY + torsoHeight * 0.56);
+      ctx.lineTo(screenX + torsoWidth * 0.62, torsoY + torsoHeight * 0.58);
+      ctx.lineTo(screenX + torsoWidth * 0.58, torsoY + torsoHeight * 0.42);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#96b57b';
+      ctx.beginPath();
+      ctx.arc(screenX, headY, headRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(screenX - headRadius * 0.62, headY - headRadius * 0.22, headRadius * 0.28, 5);
+      ctx.fillRect(screenX + headRadius * 0.34, headY - headRadius * 0.22, headRadius * 0.28, 5);
+
+      ctx.fillStyle = '#111827';
+      ctx.fillRect(screenX - headRadius * 0.54, headY - headRadius * 0.16, 4, 4);
+      ctx.fillRect(screenX + headRadius * 0.26, headY - headRadius * 0.16, 4, 4);
+
+      ctx.strokeStyle = 'rgba(46, 22, 30, 0.95)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(screenX - headRadius * 0.46, headY + headRadius * 0.34);
+      ctx.quadraticCurveTo(screenX, headY + headRadius * 0.56, screenX + headRadius * 0.46, headY + headRadius * 0.34);
+      ctx.stroke();
+
+      ctx.fillStyle = '#44623b';
+      ctx.fillRect(screenX - torsoWidth * 0.54, torsoY + torsoHeight * 0.10, torsoWidth * 0.18, torsoHeight * 0.28);
+      ctx.fillRect(screenX + torsoWidth * 0.36, torsoY + torsoHeight * 0.10, torsoWidth * 0.18, torsoHeight * 0.28);
+
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(screenX - torsoWidth * 0.62, torsoY + torsoHeight * 0.12, torsoWidth * 0.14, torsoHeight * 0.08);
+      ctx.fillRect(screenX + torsoWidth * 0.44, torsoY + torsoHeight * 0.12, torsoWidth * 0.14, torsoHeight * 0.08);
+
+      ctx.fillStyle = '#3e2f32';
+      ctx.beginPath();
+      ctx.moveTo(screenX - torsoWidth * 0.28, torsoY + torsoHeight * 0.24);
+      ctx.lineTo(screenX - torsoWidth * 0.60, torsoY + torsoHeight * 0.44);
+      ctx.lineTo(screenX - torsoWidth * 0.28, torsoY + torsoHeight * 0.50);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(screenX + torsoWidth * 0.28, torsoY + torsoHeight * 0.24);
+      ctx.lineTo(screenX + torsoWidth * 0.60, torsoY + torsoHeight * 0.44);
+      ctx.lineTo(screenX + torsoWidth * 0.28, torsoY + torsoHeight * 0.50);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#2f4d23';
+      ctx.fillRect(screenX - hipWidth * 0.24 + step, torsoY + torsoHeight * 0.66, hipWidth * 0.18, legHeight * 0.92);
+      ctx.fillRect(screenX + hipWidth * 0.12 - step, torsoY + torsoHeight * 0.66, hipWidth * 0.18, legHeight * 0.92);
+
+      ctx.restore();
+    }
+
+    function drawWeapon() {
+      const weapon = weapons[state.weapon];
+      ctx.save();
+      ctx.globalAlpha = 0.98;
+      const baseY = HEIGHT - 72;
+
+      // Forearms / gloves
+      ctx.fillStyle = '#2d3138';
+      ctx.beginPath();
+      ctx.moveTo(CENTER_X - 200, baseY);
+      ctx.lineTo(CENTER_X - 160, baseY - 20);
+      ctx.lineTo(CENTER_X - 140, baseY - 18);
+      ctx.lineTo(CENTER_X - 170, baseY + 6);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(CENTER_X + 200, baseY);
+      ctx.lineTo(CENTER_X + 160, baseY - 20);
+      ctx.lineTo(CENTER_X + 140, baseY - 18);
+      ctx.lineTo(CENTER_X + 170, baseY + 6);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#1f252c';
+      ctx.fillRect(CENTER_X - 54, baseY - 20, 108, 26);
+      ctx.fillRect(CENTER_X - 20, baseY - 64, 40, 40);
+
+      // Weapon model by type
+      if (weapon.type === 'melee') {
+        ctx.fillStyle = '#c4b5fd';
+        ctx.fillRect(CENTER_X - 56, baseY - 70, 112, 16);
+        ctx.fillStyle = '#8b5cf6';
+        ctx.fillRect(CENTER_X - 18, baseY - 68, 36, 12);
+      } else if (weapon.type === 'bullet') {
+        ctx.fillStyle = '#6d28d9';
+        ctx.fillRect(CENTER_X - 70, baseY - 54, 140, 18);
+        ctx.fillStyle = '#111827';
+        ctx.fillRect(CENTER_X + 36, baseY - 58, 22, 10);
+        ctx.fillRect(CENTER_X - 66, baseY - 44, 20, 12);
+      } else if (weapon.type === 'spread') {
+        ctx.fillStyle = '#4338ca';
+        ctx.fillRect(CENTER_X - 76, baseY - 54, 152, 18);
+        ctx.fillStyle = '#6366f1';
+        ctx.fillRect(CENTER_X - 60, baseY - 48, 24, 10);
+        ctx.fillRect(CENTER_X + 36, baseY - 58, 24, 10);
+      } else if (weapon.type === 'plasma') {
+        ctx.fillStyle = '#7c3aed';
+        ctx.fillRect(CENTER_X - 72, baseY - 56, 144, 20);
+        ctx.fillStyle = '#fb7185';
+        ctx.fillRect(CENTER_X + 44, baseY - 52, 30, 8);
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = '#d8b4fe';
+        ctx.fillRect(CENTER_X - 36, baseY - 66, 72, 10);
+        ctx.globalAlpha = 0.98;
+      } else if (weapon.type === 'rocket') {
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(CENTER_X - 78, baseY - 54, 156, 22);
+        ctx.fillStyle = '#f97316';
+        ctx.fillRect(CENTER_X + 50, baseY - 50, 26, 12);
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(CENTER_X - 70, baseY - 34, 140, 12);
+      }
+
+      ctx.fillStyle = '#161b22';
+      ctx.fillRect(CENTER_X - 54, baseY + 8, 108, 18);
+      ctx.restore();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+      const sky = ctx.createLinearGradient(0, 0, 0, CENTER_Y);
+      sky.addColorStop(0, '#131b28');
+      sky.addColorStop(0.5, '#0f1624');
+      sky.addColorStop(1, '#09111d');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, WIDTH, CENTER_Y);
+
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      for (let i = 0; i < 24; i++) {
+        const radius = 1 + Math.random() * 1.4;
+        ctx.globalAlpha = 0.04 + Math.random() * 0.06;
+        ctx.beginPath();
+        ctx.arc(Math.random() * WIDTH, Math.random() * CENTER_Y * 0.72, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      const horizon = ctx.createLinearGradient(0, CENTER_Y - 72, 0, CENTER_Y + 18);
+      horizon.addColorStop(0, 'rgba(124, 58, 237, 0.04)');
+      horizon.addColorStop(1, 'rgba(10, 16, 30, 0.95)');
+      ctx.fillStyle = horizon;
+      ctx.fillRect(0, CENTER_Y - 72, WIDTH, 90);
+
+      const floor = ctx.createLinearGradient(0, CENTER_Y, 0, HEIGHT);
+      floor.addColorStop(0, '#06101b');
+      floor.addColorStop(1, '#070c12');
+      ctx.fillStyle = floor;
+      ctx.fillRect(0, CENTER_Y, WIDTH, HEIGHT - CENTER_Y);
+
+      const offset = state.floorOffset % 40;
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 8; i++) {
+        const y = CENTER_Y + offset + i * 40;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(WIDTH, y);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 12; i++) {
+        const x = 40 + i * ((WIDTH - 80) / 12);
+        const tilt = CENTER_X + (x - CENTER_X) * 0.28;
+        ctx.beginPath();
+        ctx.moveTo(x, CENTER_Y + 12);
+        ctx.lineTo(tilt, HEIGHT);
+        ctx.stroke();
+      }
+
+      drawDecor(maps[state.map]);
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(CENTER_X - 260, CENTER_Y + 12);
+      ctx.lineTo(CENTER_X, CENTER_Y - 22);
+      ctx.lineTo(CENTER_X + 260, CENTER_Y + 12);
+      ctx.stroke();
 
       state.zombies.forEach(z => {
         if (!z.alive) return;
@@ -588,18 +982,14 @@
         const dy = z.y - state.player.y;
         const distance = Math.hypot(dx, dy);
         const angle = Math.atan2(dy, dx) - state.player.angle;
-        const visible = Math.abs(angle) < Math.PI * 0.6;
+        const visible = Math.abs(angle) < Math.PI * 0.55;
         if (!visible) return;
+
         const depth = clamp(1 - distance / 900, 0, 1);
-        const size = clamp(120 / (distance * 0.01), 18, 120);
+        const size = clamp(140 / (distance * 0.01), 30, 140);
         const screenX = CENTER_X + Math.tan(angle) * 520;
-        const screenY = CENTER_Y + (1 - depth) * 60;
-        ctx.fillStyle = `rgba(178, 80, 255, ${0.25 + depth * 0.65})`;
-        ctx.beginPath();
-        ctx.ellipse(screenX, screenY, size * 0.38, size * 0.72, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = `rgba(255,255,255,${0.12 + depth * 0.3})`;
-        ctx.fillRect(screenX - 4, screenY - size * 0.38, 8, 18);
+        const screenY = CENTER_Y + (1 - depth) * 70;
+        drawZombie(screenX, screenY, size, 0.3 + depth * 0.58);
       });
 
       state.bullets.forEach(b => {
@@ -618,14 +1008,16 @@
         ctx.globalAlpha = 1;
       });
 
+      drawWeapon();
+
       ctx.fillStyle = 'rgba(255,255,255,0.06)';
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
       ctx.fillStyle = '#e2e8f0';
       ctx.font = '600 18px Inter, Arial';
       ctx.fillText(`Wave ${Math.max(1, Math.floor(state.wave))}`, 28, 36);
       ctx.fillText(`${maps[state.map].name}`, 28, 62);
-      if (state.health <= 0) {
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      if (!state.infiniteLives && state.health <= 0) {
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
         ctx.fillRect(0, 0, WIDTH, HEIGHT);
         ctx.fillStyle = '#fb7185';
         ctx.font = 'bold 54px Inter, Arial';
@@ -635,12 +1027,32 @@
       }
     }
 
+    function togglePause() {
+      state.paused = !state.paused;
+      updateUI();
+    }
+
+    function drawPauseOverlay() {
+      if (!state.paused) return;
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 42px Inter, Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('PAUSED', CENTER_X, CENTER_Y - 16);
+      ctx.font = '18px Inter, Arial';
+      ctx.fillText('You can buy weapons, armor, and maps while paused.', CENTER_X, CENTER_Y + 26);
+      ctx.restore();
+    }
+
     function loop(now) {
       if (!state.lastTime) state.lastTime = now;
       const dt = Math.min(now - state.lastTime, 40);
       state.lastTime = now;
-      if (state.health > 0) update(dt);
+      if (!state.paused && state.health > 0) update(dt);
       draw();
+      drawPauseOverlay();
       requestAnimationFrame(loop);
     }
 
@@ -667,10 +1079,12 @@
 
     canvas.addEventListener('mousedown', attack);
     canvas.addEventListener('touchstart', attack);
+    pauseBtn.addEventListener('click', togglePause);
 
     updateUI();
     buildShop();
     state.nextSpawn = performance.now() + 400;
+    state.floorOffset = 0;
     requestAnimationFrame(loop);
   </script>
 </body>
