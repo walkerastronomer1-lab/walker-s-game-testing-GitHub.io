@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WIESSP Zombie Outbreak</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07101d;
+      --panel: rgba(15, 23, 42, 0.92);
+      --panel-border: rgba(124, 58, 237, 0.22);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #7c3aed;
+      --accent-strong: #22d3ee;
+      --danger: #fb7185;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, Arial, sans-serif;
+      background: radial-gradient(circle at top, rgba(124, 58, 237, 0.18), transparent 24%),
+                  radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.12), transparent 30%),
+                  linear-gradient(180deg, #07101d 0%, #0b1222 40%, #0f172a 100%);
+      color: var(--text);
+      padding: 24px;
+    }
+
+    header {
+      max-width: 1280px;
+      margin: 0 auto 26px;
+      text-align: center;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: clamp(2.6rem, 4vw, 3.8rem);
+      letter-spacing: -0.05em;
+    }
+
+    header p {
+      margin: 16px auto 0;
+      max-width: 860px;
+      color: var(--muted);
+      font-size: 1.02rem;
+      line-height: 1.75;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 1.4fr 0.9fr;
+      gap: 22px;
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 1100px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
+      backdrop-filter: blur(12px);
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .status-card {
+      background: rgba(10, 16, 30, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 18px;
+      padding: 16px;
+    }
+
+    .status-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 8px;
+    }
+
+    .status-card strong {
+      font-size: 1.2rem;
+      display: block;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      border-radius: 28px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: radial-gradient(circle at center, rgba(255,255,255,0.04), transparent 45%),
+                  linear-gradient(180deg, #0f172a 0%, #07101d 100%);
+    }
+
+    #gameCanvas {
+      width: 100%;
+      height: 560px;
+      display: block;
+      background: #0b1222;
+    }
+
+    .crosshair {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 30px;
+      height: 30px;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .crosshair::before,
+    .crosshair::after {
+      content: '';
+      position: absolute;
+      background: rgba(255,255,255,0.9);
+    }
+
+    .crosshair::before {
+      left: 50%;
+      top: 0;
+      width: 2px;
+      height: 100%;
+      transform: translateX(-50%);
+    }
+
+    .crosshair::after {
+      top: 50%;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      transform: translateY(-50%);
+    }
+
+    .controls {
+      display: grid;
+      gap: 20px;
+    }
+
+    .section-title {
+      margin: 0 0 12px;
+      color: #cbd5e1;
+      font-size: 1.05rem;
+      letter-spacing: 0.01em;
+    }
+
+    .shop-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .shop-card {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: center;
+      background: rgba(10, 18, 36, 0.9);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 18px;
+      padding: 16px;
+    }
+
+    .shop-card strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 1rem;
+    }
+
+    .shop-card span {
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.4;
+    }
+
+    .shop-card button {
+      background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+      border: none;
+      color: white;
+      padding: 12px 16px;
+      border-radius: 999px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.2s ease, opacity 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .shop-card button:hover:not(:disabled) {
+      transform: translateY(-2px);
+    }
+
+    .shop-card button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      background: rgba(100, 116, 139, 0.5);
+    }
+
+    .footer {
+      max-width: 1280px;
+      margin: 24px auto 0;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 0.94rem;
+      line-height: 1.65;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>WIESSP Zombie Outbreak</h1>
+    <p>First-person shooter prototype with a starter katana, six unlockable guns, armor upgrades, money from kills, and four buyable maps. Every katana kill splashes purple ooze.</p>
+  </header>
+
+  <div class="app">
+    <section class="panel">
+      <div class="status-grid">
+        <div class="status-card"><span>Money</span><strong id="money">$0</strong></div>
+        <div class="status-card"><span>Health</span><strong id="health">100</strong></div>
+        <div class="status-card"><span>Armor</span><strong id="armor">None</strong></div>
+        <div class="status-card"><span>Weapon</span><strong id="weapon">Katana</strong></div>
+      </div>
+
+      <div class="canvas-wrap">
+        <canvas id="gameCanvas" width="1200" height="560"></canvas>
+        <div class="crosshair"></div>
+      </div>
+
+      <p class="note">Controls: W/A/S/D to move, Arrow keys to turn, Space or mouse to attack, keys 1-7 to switch unlocked weapons.</p>
+    </section>
+
+    <section class="panel controls">
+      <div>
+        <h2 class="section-title">Weapons</h2>
+        <div id="weaponShop" class="shop-grid"></div>
+      </div>
+
+      <div>
+        <h2 class="section-title">Armor</h2>
+        <div id="armorShop" class="shop-grid"></div>
+      </div>
+
+      <div>
+        <h2 class="section-title">Maps</h2>
+        <div id="mapShop" class="shop-grid"></div>
+      </div>
+
+      <div>
+        <h2 class="section-title">Game Notes</h2>
+        <p class="note">Kill zombies to earn cash, buy better guns and armor, then unlock new maps. The starting katana is deadly up close and adds purple ooze flair on every kill.</p>
+      </div>
+    </section>
+  </div>
+
+  <div class="footer">This prototype is designed to be clear, smooth, and easy on the eyes while showing unlock progression, money, and first-person action.</div>
+
+  <script>
+    const weapons = [
+      { name: 'Katana', cost: 0, damage: 44, fireRate: 0.28, range: 110, type: 'melee', description: 'Starter throat slasher with purple ooze.', purchased: true },
+      { name: 'Pistol', cost: 240, damage: 20, fireRate: 0.24, range: 660, type: 'bullet', description: 'Reliable handgun.' , purchased: false },
+      { name: 'SMG', cost: 920, damage: 12, fireRate: 0.12, range: 520, type: 'bullet', description: 'Rapid spray for close fights.', purchased: false },
+      { name: 'Shotgun', cost: 1820, damage: 48, fireRate: 0.78, range: 300, type: 'spread', description: 'Punches through crowds.', purchased: false },
+      { name: 'Rifle', cost: 3400, damage: 34, fireRate: 0.32, range: 830, type: 'bullet', description: 'Precise long-range fire.', purchased: false },
+      { name: 'Plasma', cost: 5200, damage: 46, fireRate: 0.56, range: 860, type: 'plasma', description: 'Glowing energy shots.', purchased: false },
+      { name: 'Rocket', cost: 9400, damage: 92, fireRate: 1.05, range: 920, type: 'rocket', description: 'Explosive power.', purchased: false }
+    ];
+
+    const armors = [
+      { name: 'None', cost: 0, protection: 0, purchased: true },
+      { name: 'Kevlar', cost: 1200, protection: 0.14, purchased: false },
+      { name: 'Titanium', cost: 3600, protection: 0.26, purchased: false },
+      { name: 'Energy Shield', cost: 7600, protection: 0.44, purchased: false }
+    ];
+
+    const maps = [
+      { name: 'Graveyard', cost: 0, color: '#101827', speed: 0.62, spawn: 1.9, description: 'Slow undead in the fog.', purchased: true },
+      { name: 'Factory', cost: 1100, color: '#181f33', speed: 0.82, spawn: 1.4, description: 'Tighter corridors, faster threats.', purchased: false },
+      { name: 'Neon Lab', cost: 2900, color: '#0d1724', speed: 1.0, spawn: 1.1, description: 'Bright lab with quick spawns.', purchased: false },
+      { name: 'Ruins', cost: 5600, color: '#0b121f', speed: 1.16, spawn: 0.85, description: 'Eerie stone halls and tough undead.', purchased: false }
+    ];
+
+    const state = {
+      money: 0,
+      health: 100,
+      armor: 0,
+      weapon: 0,
+      map: 0,
+      keys: {},
+      player: { x: 600, y: 280, angle: 0 },
+      zombies: [],
+      bullets: [],
+      effects: [],
+      nextSpawn: 0,
+      lastAttack: 0,
+      wave: 1,
+      lastTime: 0
+    };
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const moneyEl = document.getElementById('money');
+    const healthEl = document.getElementById('health');
+    const armorEl = document.getElementById('armor');
+    const weaponEl = document.getElementById('weapon');
+    const weaponShop = document.getElementById('weaponShop');
+    const armorShop = document.getElementById('armorShop');
+    const mapShop = document.getElementById('mapShop');
+    const WIDTH = canvas.width;
+    const HEIGHT = canvas.height;
+    const CENTER_X = WIDTH / 2;
+    const CENTER_Y = HEIGHT / 2;
+
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    function updateUI() {
+      moneyEl.textContent = `$${state.money}`;
+      healthEl.textContent = `${Math.max(0, Math.round(state.health))}`;
+      armorEl.textContent = armors[state.armor].name;
+      weaponEl.textContent = weapons[state.weapon].name;
+    }
+
+    function buildShop() {
+      weaponShop.innerHTML = '';
+      weapons.forEach((item, index) => {
+        const card = document.createElement('div');
+        card.className = 'shop-card';
+        const info = document.createElement('div');
+        info.innerHTML = `<strong>${item.name}</strong><span>${item.description} ${item.cost ? '$' + item.cost : 'Free'}</span>`;
+        const button = document.createElement('button');
+        if (item.purchased) {
+          button.textContent = state.weapon === index ? 'Equipped' : 'Equip';
+          button.disabled = state.weapon === index;
+          button.onclick = () => { state.weapon = index; updateUI(); buildShop(); };
+        } else {
+          button.textContent = `Buy $${item.cost}`;
+          button.disabled = state.money < item.cost;
+          button.onclick = () => {
+            if (state.money >= item.cost) {
+              state.money -= item.cost;
+              item.purchased = true;
+              state.weapon = index;
+              updateUI();
+              buildShop();
+            }
+          };
+        }
+        card.append(info, button);
+        weaponShop.append(card);
+      });
+
+      armorShop.innerHTML = '';
+      armors.forEach((item, index) => {
+        const card = document.createElement('div');
+        card.className = 'shop-card';
+        const info = document.createElement('div');
+        const protection = item.protection ? `Protection ${Math.round(item.protection * 100)}%` : 'No armor';
+        info.innerHTML = `<strong>${item.name}</strong><span>${protection} ${item.cost ? '$' + item.cost : 'Free'}</span>`;
+        const button = document.createElement('button');
+        if (item.purchased) {
+          button.textContent = state.armor === index ? 'Equipped' : 'Equip';
+          button.disabled = state.armor === index;
+          button.onclick = () => { state.armor = index; updateUI(); buildShop(); };
+        } else {
+          button.textContent = `Buy $${item.cost}`;
+          button.disabled = state.money < item.cost;
+          button.onclick = () => {
+            if (state.money >= item.cost) {
+              state.money -= item.cost;
+              item.purchased = true;
+              state.armor = index;
+              updateUI();
+              buildShop();
+            }
+          };
+        }
+        card.append(info, button);
+        armorShop.append(card);
+      });
+
+      mapShop.innerHTML = '';
+      maps.forEach((item, index) => {
+        const card = document.createElement('div');
+        card.className = 'shop-card';
+        const info = document.createElement('div');
+        info.innerHTML = `<strong>${item.name}</strong><span>${item.description} ${item.cost ? '$' + item.cost : 'Free'}</span>`;
+        const button = document.createElement('button');
+        if (item.purchased) {
+          button.textContent = state.map === index ? 'Active' : 'Select';
+          button.disabled = state.map === index;
+          button.onclick = () => { state.map = index; buildShop(); };
+        } else {
+          button.textContent = `Buy $${item.cost}`;
+          button.disabled = state.money < item.cost;
+          button.onclick = () => {
+            if (state.money >= item.cost) {
+              state.money -= item.cost;
+              item.purchased = true;
+              state.map = index;
+              updateUI();
+              buildShop();
+            }
+          };
+        }
+        card.append(info, button);
+        mapShop.append(card);
+      });
+    }
+
+    function spawnZombie() {
+      const map = maps[state.map];
+      const edge = Math.random();
+      let x, y;
+      if (edge < 0.25) { x = Math.random() * WIDTH; y = -40; }
+      else if (edge < 0.5) { x = Math.random() * WIDTH; y = HEIGHT + 40; }
+      else if (edge < 0.75) { x = -40; y = Math.random() * HEIGHT; }
+      else { x = WIDTH + 40; y = Math.random() * HEIGHT; }
+      state.zombies.push({ x, y, hp: 68 + Math.random() * 38, speed: map.speed * (0.9 + Math.random() * 0.28), alive: true, deadTime: 0 });
+    }
+
+    function addMoney(amount) {
+      state.money += amount;
+      updateUI();
+      buildShop();
+    }
+
+    function hitZombie(z, damage, attackType) {
+      z.hp -= damage;
+      if (attackType === 'melee') {
+        for (let i = 0; i < 18; i++) {
+          state.effects.push({ x: z.x + (Math.random() - 0.5) * 24, y: z.y + (Math.random() - 0.5) * 24, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3, life: 30 + Math.random() * 20, color: 'rgb(180, 130, 255)', size: 2 + Math.random() * 3 });
+        }
+      } else {
+        state.effects.push({ x: z.x, y: z.y, vx: (Math.random() - 0.5) * 2, vy: (Math.random() - 0.5) * 2, life: 18, color: '#7c3aed', size: 2 + Math.random() * 2 });
+      }
+
+      if (z.hp <= 0 && z.alive) {
+        z.alive = false;
+        z.deadTime = 58;
+        const reward = attackType === 'melee' ? 45 : 32 + Math.round(Math.random() * 22);
+        addMoney(reward);
+        state.wave += 0.06;
+        for (let i = 0; i < 26; i++) {
+          state.effects.push({ x: z.x + (Math.random() - 0.5) * 30, y: z.y + (Math.random() - 0.5) * 30, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4, life: 40 + Math.random() * 20, color: 'rgba(179, 94, 255, 0.85)', size: 3 + Math.random() * 3 });
+        }
+      }
+    }
+
+    function attack() {
+      const weapon = weapons[state.weapon];
+      const now = performance.now();
+      if (now - state.lastAttack < weapon.fireRate * 1000) return;
+      state.lastAttack = now;
+      if (weapon.type === 'melee') {
+        const target = state.zombies.find(z => z.alive && Math.hypot(z.x - state.player.x, z.y - state.player.y) < weapon.range);
+        if (target) hitZombie(target, weapon.damage, 'melee');
+      } else if (weapon.type === 'spread') {
+        const bullets = 5;
+        for (let i = 0; i < bullets; i++) {
+          const spread = (i - 2) * 0.08;
+          const angle = state.player.angle + spread;
+          const speed = 18;
+          state.bullets.push({ x: state.player.x, y: state.player.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, damage: weapon.damage * 0.7, range: weapon.range, traveled: 0, color: '#d8b4fe' });
+        }
+      } else {
+        const angle = state.player.angle;
+        const speed = weapon.type === 'rocket' ? 14 : 18;
+        const color = weapon.type === 'plasma' ? '#7c3aed' : '#f8fafc';
+        state.bullets.push({ x: state.player.x, y: state.player.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, damage: weapon.damage, range: weapon.range, traveled: 0, color });
+      }
+    }
+
+    function update(dt) {
+      const map = maps[state.map];
+      if (state.keys.ArrowLeft) state.player.angle -= dt * 0.0028;
+      if (state.keys.ArrowRight) state.player.angle += dt * 0.0028;
+      if (state.keys.w) { state.player.x += Math.cos(state.player.angle) * 180 * dt / 1000; state.player.y += Math.sin(state.player.angle) * 180 * dt / 1000; }
+      if (state.keys.s) { state.player.x -= Math.cos(state.player.angle) * 140 * dt / 1000; state.player.y -= Math.sin(state.player.angle) * 140 * dt / 1000; }
+      if (state.keys.a) { state.player.x += Math.cos(state.player.angle - Math.PI / 2) * 160 * dt / 1000; state.player.y += Math.sin(state.player.angle - Math.PI / 2) * 160 * dt / 1000; }
+      if (state.keys.d) { state.player.x += Math.cos(state.player.angle + Math.PI / 2) * 160 * dt / 1000; state.player.y += Math.sin(state.player.angle + Math.PI / 2) * 160 * dt / 1000; }
+      state.player.x = clamp(state.player.x, 60, WIDTH - 60);
+      state.player.y = clamp(state.player.y, 60, HEIGHT - 60);
+      state.player.angle = (state.player.angle + Math.PI * 2) % (Math.PI * 2);
+
+      state.bullets = state.bullets.filter(b => b.traveled < b.range);
+      state.zombies.forEach(z => {
+        if (!z.alive) return;
+        const dx = state.player.x - z.x;
+        const dy = state.player.y - z.y;
+        const distance = Math.hypot(dx, dy);
+        const angle = Math.atan2(dy, dx);
+        z.x += Math.cos(angle) * z.speed * dt / 14;
+        z.y += Math.sin(angle) * z.speed * dt / 14;
+        if (distance < 34) {
+          const protection = armors[state.armor].protection;
+          state.health -= (5 * (1 - protection)) * dt / 120;
+        }
+      });
+
+      state.bullets.forEach(bullet => {
+        bullet.x += bullet.vx;
+        bullet.y += bullet.vy;
+        bullet.traveled += Math.hypot(bullet.vx, bullet.vy);
+        state.zombies.forEach(z => {
+          if (!z.alive) return;
+          const d = Math.hypot(z.x - bullet.x, z.y - bullet.y);
+          if (d < 28) {
+            hitZombie(z, bullet.damage, 'range');
+            bullet.traveled = bullet.range + 1;
+            if (weapons[state.weapon].type === 'rocket') {
+              for (let i = 0; i < 14; i++) {
+                state.effects.push({ x: bullet.x, y: bullet.y, vx: (Math.random() - 0.5) * 5, vy: (Math.random() - 0.5) * 5, life: 24 + Math.random() * 16, color: 'rgba(124, 58, 237, 0.65)', size: 3 + Math.random() * 3 });
+              }
+            }
+          }
+        });
+      });
+
+      if (performance.now() > state.nextSpawn) {
+        spawnZombie();
+        state.nextSpawn = performance.now() + (1200 / map.spawn);
+      }
+
+      state.effects = state.effects.filter(effect => {
+        effect.x += effect.vx;
+        effect.y += effect.vy;
+        effect.life -= 1;
+        return effect.life > 0;
+      });
+
+      state.zombies = state.zombies.filter(z => z.alive || z.deadTime > 0);
+      state.zombies.forEach(z => { if (!z.alive) z.deadTime -= 1; });
+
+      if (state.health <= 0) state.health = 0;
+      updateUI();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, WIDTH, HEIGHT);
+      const sky = ctx.createLinearGradient(0, 0, 0, CENTER_Y);
+      sky.addColorStop(0, '#13192f');
+      sky.addColorStop(1, '#0b1222');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, WIDTH, CENTER_Y);
+      const ground = ctx.createLinearGradient(0, CENTER_Y, 0, HEIGHT);
+      ground.addColorStop(0, '#0f172a');
+      ground.addColorStop(1, '#07101d');
+      ctx.fillStyle = ground;
+      ctx.fillRect(0, CENTER_Y, WIDTH, CENTER_Y);
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+      ctx.lineWidth = 1;
+      for (let i = 1; i < 17; i++) {
+        ctx.beginPath();
+        ctx.moveTo(0, CENTER_Y + i * 20);
+        ctx.lineTo(WIDTH, CENTER_Y + i * 20);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = maps[state.map].color;
+      ctx.fillRect(0, CENTER_Y, WIDTH, 16);
+
+      state.zombies.forEach(z => {
+        if (!z.alive) return;
+        const dx = z.x - state.player.x;
+        const dy = z.y - state.player.y;
+        const distance = Math.hypot(dx, dy);
+        const angle = Math.atan2(dy, dx) - state.player.angle;
+        const visible = Math.abs(angle) < Math.PI * 0.6;
+        if (!visible) return;
+        const depth = clamp(1 - distance / 900, 0, 1);
+        const size = clamp(120 / (distance * 0.01), 18, 120);
+        const screenX = CENTER_X + Math.tan(angle) * 520;
+        const screenY = CENTER_Y + (1 - depth) * 60;
+        ctx.fillStyle = `rgba(178, 80, 255, ${0.25 + depth * 0.65})`;
+        ctx.beginPath();
+        ctx.ellipse(screenX, screenY, size * 0.38, size * 0.72, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = `rgba(255,255,255,${0.12 + depth * 0.3})`;
+        ctx.fillRect(screenX - 4, screenY - size * 0.38, 8, 18);
+      });
+
+      state.bullets.forEach(b => {
+        ctx.fillStyle = b.color;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      state.effects.forEach(effect => {
+        ctx.fillStyle = effect.color;
+        ctx.globalAlpha = clamp(effect.life / 40, 0, 1);
+        ctx.beginPath();
+        ctx.arc(effect.x, effect.y, effect.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      });
+
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = '600 18px Inter, Arial';
+      ctx.fillText(`Wave ${Math.max(1, Math.floor(state.wave))}`, 28, 36);
+      ctx.fillText(`${maps[state.map].name}`, 28, 62);
+      if (state.health <= 0) {
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+        ctx.fillStyle = '#fb7185';
+        ctx.font = 'bold 54px Inter, Arial';
+        ctx.fillText('YOU DIED', CENTER_X - 140, CENTER_Y);
+        ctx.font = '18px Inter, Arial';
+        ctx.fillText('Refresh to restart.', CENTER_X - 85, CENTER_Y + 40);
+      }
+    }
+
+    function loop(now) {
+      if (!state.lastTime) state.lastTime = now;
+      const dt = Math.min(now - state.lastTime, 40);
+      state.lastTime = now;
+      if (state.health > 0) update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    window.addEventListener('keydown', event => {
+      const key = event.key.toLowerCase();
+      state.keys[key] = true;
+      if (key === ' ' || key === 'enter') {
+        attack();
+        event.preventDefault();
+      }
+      if (['1','2','3','4','5','6','7'].includes(key)) {
+        const index = Number(key) - 1;
+        if (weapons[index] && weapons[index].purchased) {
+          state.weapon = index;
+          buildShop();
+          updateUI();
+        }
+      }
+    });
+
+    window.addEventListener('keyup', event => {
+      state.keys[event.key.toLowerCase()] = false;
+    });
+
+    canvas.addEventListener('mousedown', attack);
+    canvas.addEventListener('touchstart', attack);
+
+    updateUI();
+    buildShop();
+    state.nextSpawn = performance.now() + 400;
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
